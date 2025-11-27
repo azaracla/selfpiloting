@@ -104,6 +104,36 @@ python replay.py recordings/session_20231127_143022 --delay 10
 - ✅ **Débugger** des problèmes dans les données
 - ✅ **Comparer** le comportement humain vs IA (plus tard)
 
+### ⚠️ Limitation importante : Easy Anti-Cheat
+
+**Star Citizen utilise Easy Anti-Cheat (EAC)** qui bloque la plupart des méthodes de replay d'inputs logicielles.
+
+**Tests effectués :**
+| Méthode | Fonctionne dans Notepad | Fonctionne dans Star Citizen |
+|---------|------------------------|------------------------------|
+| SendInput API | ✅ Oui | ❌ Non (bloqué par EAC) |
+| Windows Messages | ✅ Oui | ❌ Non (bloqué par EAC) |
+| pyautogui | ✅ Oui | ❌ Non (bloqué par EAC) |
+
+**Solutions possibles :**
+
+1. **Mode offline/Arena Commander** (✅ Recommandé)
+   - Désactiver temporairement EAC pour jouer hors ligne
+   - Le replay fonctionnera normalement
+
+2. **Hardware USB** (✅ Sûr mais nécessite matériel)
+   - Arduino Leonardo/Pro Micro (~15-30€)
+   - Émule un vrai clavier/souris USB
+   - 100% indétectable
+
+3. **Utilisation alternative** (✅ Sans limitations)
+   - Analyser les données enregistrées
+   - Entraîner des modèles ML
+   - Visualiser les trajectoires
+   - Utiliser avec d'autres jeux sans anti-cheat
+
+**Pour plus de détails, voir [`ANTI_CHEAT_LIMITATIONS.md`](ANTI_CHEAT_LIMITATIONS.md)**
+
 ## 📊 Données enregistrées
 
 Chaque session génère un dossier avec les fichiers suivants:
