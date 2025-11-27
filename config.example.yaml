@@ -1,0 +1,50 @@
+# Star Citizen AI Training Data Recorder Configuration
+# Copy this file to config.yaml and adjust settings as needed
+
+# Recording settings
+recording:
+  # Frames per second for video capture
+  fps: 30
+
+  # Video resolution (width, height)
+  # Set to null for native screen resolution
+  resolution:
+    width: 1280
+    height: 720
+  # Or set to null for native:
+  # resolution: null
+
+  # Monitor to capture (1 = primary monitor)
+  monitor: 1
+
+  # Video codec for encoding
+  # Options: libx264, libx265, mpeg4
+  codec: libx264
+
+# Output settings
+output:
+  # Directory to save recordings
+  directory: recordings
+
+  # Auto-generated session name format
+  # Timestamp format: %Y%m%d_%H%M%S
+  session_name_format: "session_%Y%m%d_%H%M%S"
+
+# Performance settings
+performance:
+  # Maximum frame buffer size (in frames)
+  # Larger = more memory, but better handling of lag spikes
+  max_frame_buffer: 300
+
+  # Enable/disable mouse movement recording
+  # Disable if too many events (can generate huge files)
+  record_mouse_movement: true
+
+# AI Training settings
+training:
+  # Generate frame-aligned input states
+  # Recommended for supervised learning approaches
+  generate_frame_aligned: true
+
+  # Additional data to save
+  save_metadata: true
