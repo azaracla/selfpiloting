@@ -70,6 +70,7 @@ class SessionReplay:
         self._current_event_idx = 0
         self._start_time = None
         self._pressed_keys = {}  # Map key_id to key object/vk code
+        self._last_mouse_pos = None  # Track last mouse position for relative movement
 
         self.game_window = None
 
@@ -351,6 +352,7 @@ class SessionReplay:
         self._current_event_idx = 0
         self._start_time = time.time()
         self._pressed_keys = {}
+        self._last_mouse_pos = None  # Reset mouse position tracking
 
         try:
             while self.replaying and self._current_event_idx < len(self.events):
@@ -405,7 +407,13 @@ class SessionReplay:
                         del self._pressed_keys[key_str]
 
                 elif event_type == 'mouse_move':
-                    self.windows_input.mouse_move(data['x'], data['y'])
+                    # Use relative mouse movement for games (more natural)
+                    x, y = data['x'], data['y']
+                    if self._last_mouse_pos is not None:
+                        dx = x - self._last_mouse_pos[0]
+                        dy = y - self._last_mouse_pos[1]
+                        self.windows_input.mouse_move_relative(dx, dy)
+                    self._last_mouse_pos = (x, y)
 
                 elif event_type == 'mouse_press':
                     button = data['button'].lower()
