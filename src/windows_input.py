@@ -40,20 +40,30 @@ VK_CODE = {
 
     'space': 0x20,
     'enter': 0x0D,
+    'return': 0x0D,  # Alias for enter
     'tab': 0x09,
     'esc': 0x1B,
+    'escape': 0x1B,  # Alias for esc
     'backspace': 0x08,
     'delete': 0x2E,
+    'del': 0x2E,  # Alias for delete
 
     'shift': 0x10,
     'shiftleft': 0xA0,
+    'shift_l': 0xA0,
     'shiftright': 0xA1,
+    'shift_r': 0xA1,
     'ctrl': 0x11,
+    'control': 0x11,
     'ctrlleft': 0xA2,
+    'ctrl_l': 0xA2,
     'ctrlright': 0xA3,
+    'ctrl_r': 0xA3,
     'alt': 0x12,
     'altleft': 0xA4,
+    'alt_l': 0xA4,
     'altright': 0xA5,
+    'alt_r': 0xA5,
 
     'up': 0x26,
     'down': 0x28,
@@ -61,7 +71,9 @@ VK_CODE = {
     'right': 0x27,
 
     'pageup': 0x21,
+    'page_up': 0x21,
     'pagedown': 0x22,
+    'page_down': 0x22,
     'home': 0x24,
     'end': 0x23,
     'insert': 0x2D,
@@ -69,6 +81,18 @@ VK_CODE = {
     'f1': 0x70, 'f2': 0x71, 'f3': 0x72, 'f4': 0x73,
     'f5': 0x74, 'f6': 0x75, 'f7': 0x76, 'f8': 0x77,
     'f9': 0x78, 'f10': 0x79, 'f11': 0x7A, 'f12': 0x7B,
+
+    # Additional symbols and numpad keys
+    'num0': 0x60, 'num1': 0x61, 'num2': 0x62, 'num3': 0x63,
+    'num4': 0x64, 'num5': 0x65, 'num6': 0x66, 'num7': 0x67,
+    'num8': 0x68, 'num9': 0x69,
+    'multiply': 0x6A, 'add': 0x6B, 'subtract': 0x6D,
+    'decimal': 0x6E, 'divide': 0x6F,
+
+    # Common symbols
+    '-': 0xBD, '=': 0xBB, '[': 0xDB, ']': 0xDD,
+    ';': 0xBA, "'": 0xDE, ',': 0xBC, '.': 0xBE,
+    '/': 0xBF, '\\': 0xDC, '`': 0xC0,
 }
 
 
@@ -135,6 +159,11 @@ class WindowsInput:
         Returns:
             Virtual key code
         """
+        # Strip quotes if present (e.g., "'z'" -> "z")
+        # This happens when pynput KeyCode objects are converted to string
+        if key_str.startswith("'") and key_str.endswith("'") and len(key_str) >= 3:
+            key_str = key_str[1:-1]
+
         key_lower = key_str.lower()
 
         # Handle Key.xxx format from pynput
@@ -169,7 +198,9 @@ class WindowsInput:
         """
         vk_code = self._get_vk_code(key_str)
         if vk_code == 0:
-            print(f"[WindowsInput] Warning: Unknown key '{key_str}'")
+            # Show both the string and hex representation for debugging
+            hex_repr = ''.join(f'\\x{ord(c):02x}' for c in key_str)
+            print(f"[WindowsInput] Warning: Unknown key '{key_str}' (hex: {hex_repr})")
             return
 
         self.pressed_keys[key_str] = vk_code
