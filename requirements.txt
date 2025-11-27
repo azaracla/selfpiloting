@@ -1,0 +1,21 @@
+# Star Citizen AI Training Data Recorder
+# Requirements for Windows
+
+# Screen capture
+mss>=9.0.1
+opencv-python>=4.8.0
+numpy>=1.24.0
+Pillow>=10.0.0
+
+# Input recording
+pynput>=1.7.6
+
+# Video encoding
+imageio>=2.31.0
+imageio-ffmpeg>=0.4.9
+
+# Data management
+h5py>=3.9.0
+
+# Configuration
+pyyaml>=6.0
