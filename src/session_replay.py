@@ -15,16 +15,29 @@ try:
 except ImportError:
     gw = None
 
+# Import Windows native input for better game compatibility
+try:
+    from src.windows_input import WindowsInput
+    WINDOWS_INPUT_AVAILABLE = True
+except ImportError:
+    try:
+        from windows_input import WindowsInput
+        WINDOWS_INPUT_AVAILABLE = True
+    except ImportError:
+        WINDOWS_INPUT_AVAILABLE = False
+        WindowsInput = None
+
 
 class SessionReplay:
     """Replays recorded keyboard and mouse inputs."""
 
-    def __init__(self, session_path: str):
+    def __init__(self, session_path: str, use_windows_native: bool = True):
         """
         Initialize session replay.
 
         Args:
             session_path: Path to recorded session directory
+            use_windows_native: Use Windows SendInput API instead of pyautogui (recommended for games)
         """
         self.session_path = Path(session_path)
 
@@ -34,23 +47,31 @@ class SessionReplay:
         # Load input events
         self.events = self._load_events()
 
-        # Controllers
-        self.keyboard_controller = keyboard.Controller()
-        self.mouse_controller = mouse.Controller()
+        # Platform detection
+        self.is_windows = platform.system() == 'Windows'
+
+        # Choose input method
+        self.use_windows_native = use_windows_native and self.is_windows and WINDOWS_INPUT_AVAILABLE
+
+        if self.use_windows_native:
+            print("[SessionReplay] Using Windows native input (SendInput API)")
+            self.windows_input = WindowsInput()
+        else:
+            print("[SessionReplay] Using pyautogui input")
+            # Controllers for pyautogui fallback
+            self.keyboard_controller = keyboard.Controller()
+            self.mouse_controller = mouse.Controller()
+            # Configure pyautogui
+            pyautogui.PAUSE = 0  # No pause between commands
+            pyautogui.FAILSAFE = False  # Disable failsafe
 
         # State tracking
         self.replaying = False
         self._current_event_idx = 0
         self._start_time = None
-        self._pressed_keys = {}  # Map key_id to pynput key object
+        self._pressed_keys = {}  # Map key_id to key object/vk code
 
-        # Platform detection
-        self.is_windows = platform.system() == 'Windows'
         self.game_window = None
-
-        # Configure pyautogui
-        pyautogui.PAUSE = 0  # No pause between commands
-        pyautogui.FAILSAFE = False  # Disable failsafe
 
     def _find_game_window(self) -> bool:
         """
@@ -105,17 +126,26 @@ class SessionReplay:
                 try:
                     self.game_window.activate()
                     time.sleep(0.5)  # Give time for window to activate
-                    print(f"[SessionReplay] Game window activated")
+                    print(f"[SessionReplay] Game window activated successfully")
                     return True
                 except Exception as e:
-                    print(f"[SessionReplay] Could not activate window: {e}")
+                    # Sometimes activate() throws an error even when it succeeds
+                    # Check the error message
+                    error_msg = str(e).lower()
+                    if 'réussi' in error_msg or 'succeed' in error_msg or 'error code from windows: 0' in error_msg:
+                        print(f"[SessionReplay] Game window activated (Windows reported success)")
+                        return True
+
+                    print(f"[SessionReplay] Warning: Could not activate window: {e}")
                     # Try to bring to front anyway
                     try:
                         self.game_window.restore()
                         self.game_window.show()
                         time.sleep(0.5)
+                        print(f"[SessionReplay] Game window restored and shown")
                         return True
-                    except:
+                    except Exception as e2:
+                        print(f"[SessionReplay] Warning: Could not restore window: {e2}")
                         pass
             else:
                 print("[SessionReplay] Warning: Could not find Star Citizen window")
@@ -356,51 +386,84 @@ class SessionReplay:
         print(f"[SessionReplay] Replay complete!")
 
     def _execute_event(self, event: Dict[str, Any]):
-        """Execute a single input event using pyautogui for better game compatibility."""
+        """Execute a single input event."""
         event_type = event['type']
         data = event['data']
 
         try:
-            if event_type == 'key_press':
-                key_str = data['key_id']
-                pyautogui_key = self._key_to_pyautogui(key_str)
-                self._pressed_keys[key_str] = pyautogui_key
-                pyautogui.keyDown(pyautogui_key)
+            if self.use_windows_native:
+                # Use Windows native SendInput API
+                if event_type == 'key_press':
+                    key_str = data['key_id']
+                    self._pressed_keys[key_str] = True
+                    self.windows_input.key_down(key_str)
 
-            elif event_type == 'key_release':
-                key_str = data['key_id']
-                if key_str in self._pressed_keys:
-                    pyautogui_key = self._pressed_keys[key_str]
-                    pyautogui.keyUp(pyautogui_key)
-                    del self._pressed_keys[key_str]
+                elif event_type == 'key_release':
+                    key_str = data['key_id']
+                    if key_str in self._pressed_keys:
+                        self.windows_input.key_up(key_str)
+                        del self._pressed_keys[key_str]
 
-            elif event_type == 'mouse_move':
-                pyautogui.moveTo(data['x'], data['y'], duration=0)
+                elif event_type == 'mouse_move':
+                    self.windows_input.mouse_move(data['x'], data['y'])
 
-            elif event_type == 'mouse_press':
-                button = data['button'].lower()
-                pyautogui.mouseDown(button=button)
+                elif event_type == 'mouse_press':
+                    button = data['button'].lower()
+                    self.windows_input.mouse_down(button)
 
-            elif event_type == 'mouse_release':
-                button = data['button'].lower()
-                pyautogui.mouseUp(button=button)
+                elif event_type == 'mouse_release':
+                    button = data['button'].lower()
+                    self.windows_input.mouse_up(button)
 
-            elif event_type == 'mouse_scroll':
-                # pyautogui.scroll expects a single value (positive = up, negative = down)
-                # For vertical scroll, use dy; for horizontal, we'd need a different approach
-                if data['dy'] != 0:
-                    pyautogui.scroll(int(data['dy']))
+                elif event_type == 'mouse_scroll':
+                    if data['dy'] != 0:
+                        # Convert scroll delta to clicks (positive = up, negative = down)
+                        clicks = data['dy'] / 120.0  # Standard wheel delta
+                        self.windows_input.mouse_scroll(clicks)
+
+            else:
+                # Fallback to pyautogui
+                if event_type == 'key_press':
+                    key_str = data['key_id']
+                    pyautogui_key = self._key_to_pyautogui(key_str)
+                    self._pressed_keys[key_str] = pyautogui_key
+                    pyautogui.keyDown(pyautogui_key)
+
+                elif event_type == 'key_release':
+                    key_str = data['key_id']
+                    if key_str in self._pressed_keys:
+                        pyautogui_key = self._pressed_keys[key_str]
+                        pyautogui.keyUp(pyautogui_key)
+                        del self._pressed_keys[key_str]
+
+                elif event_type == 'mouse_move':
+                    pyautogui.moveTo(data['x'], data['y'], duration=0)
+
+                elif event_type == 'mouse_press':
+                    button = data['button'].lower()
+                    pyautogui.mouseDown(button=button)
+
+                elif event_type == 'mouse_release':
+                    button = data['button'].lower()
+                    pyautogui.mouseUp(button=button)
+
+                elif event_type == 'mouse_scroll':
+                    if data['dy'] != 0:
+                        pyautogui.scroll(int(data['dy']))
 
         except Exception as e:
             print(f"[SessionReplay] Error executing event {event_type}: {e}")
 
     def _release_all_keys(self):
         """Release all currently pressed keys."""
-        for key_id, pyautogui_key in list(self._pressed_keys.items()):
-            try:
-                pyautogui.keyUp(pyautogui_key)
-            except:
-                pass
+        if self.use_windows_native:
+            self.windows_input.release_all_keys()
+        else:
+            for key_id, pyautogui_key in list(self._pressed_keys.items()):
+                try:
+                    pyautogui.keyUp(pyautogui_key)
+                except:
+                    pass
         self._pressed_keys.clear()
 
     def stop(self):
