@@ -64,21 +64,42 @@ class SessionReplay:
             return False
 
         try:
-            # Search for Star Citizen window
-            windows = gw.getWindowsWithTitle('Star Citizen')
+            # Get all windows
+            all_windows = gw.getAllWindows()
 
-            if not windows:
-                # Try alternative window titles
-                windows = gw.getWindowsWithTitle('StarCitizen')
+            # Filter for Star Citizen, excluding browsers and common false positives
+            excluded_keywords = ['firefox', 'chrome', 'edge', 'browser', 'mozilla',
+                                'github', 'discord', 'slack', 'teams', 'outlook']
 
-            if not windows:
-                # Try finding by partial match
-                all_windows = gw.getAllWindows()
-                windows = [w for w in all_windows if 'star citizen' in w.title.lower()]
+            game_windows = []
+            for window in all_windows:
+                title_lower = window.title.lower()
 
-            if windows:
-                self.game_window = windows[0]
+                # Must contain "star citizen"
+                if 'star citizen' not in title_lower:
+                    continue
+
+                # Exclude browsers and other apps
+                if any(excluded in title_lower for excluded in excluded_keywords):
+                    continue
+
+                # Exclude very long titles (likely web pages)
+                if len(window.title) > 100:
+                    continue
+
+                game_windows.append(window)
+
+            if game_windows:
+                # Prefer the first match
+                self.game_window = game_windows[0]
                 print(f"[SessionReplay] Found game window: '{self.game_window.title}'")
+
+                # Show all found windows for debugging
+                if len(game_windows) > 1:
+                    print(f"[SessionReplay] Note: Found {len(game_windows)} matching windows:")
+                    for i, w in enumerate(game_windows[:5]):  # Show max 5
+                        print(f"  {i+1}. {w.title[:80]}")
+                    print(f"[SessionReplay] Using the first one.")
 
                 # Activate the window
                 try:
@@ -99,6 +120,11 @@ class SessionReplay:
             else:
                 print("[SessionReplay] Warning: Could not find Star Citizen window")
                 print("[SessionReplay] Make sure the game is running and visible")
+                print("[SessionReplay] Windows with 'star citizen' in title:")
+                sc_windows = [w for w in all_windows if 'star citizen' in w.title.lower()]
+                if sc_windows:
+                    for w in sc_windows[:5]:
+                        print(f"  - {w.title[:80]}")
                 return False
 
         except Exception as e:
