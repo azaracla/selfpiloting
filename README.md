@@ -67,6 +67,43 @@ python record.py --monitor 2
 python record.py --help
 ```
 
+## 🔄 Rejouer une session
+
+Vous pouvez rejouer une session enregistrée pour vérifier que tout fonctionne correctement. L'outil va simuler tous les inputs clavier/souris exactement comme ils ont été enregistrés.
+
+### Lister les sessions disponibles
+
+```bash
+python replay.py --list
+```
+
+### Rejouer une session
+
+```bash
+# Rejouer à vitesse normale
+python replay.py recordings/session_20231127_143022
+
+# Rejouer en accéléré (2x plus rapide)
+python replay.py recordings/session_20231127_143022 --speed 2.0
+
+# Rejouer en ralenti (0.5x)
+python replay.py recordings/session_20231127_143022 --speed 0.5
+
+# Attendre 10 secondes avant de commencer
+python replay.py recordings/session_20231127_143022 --delay 10
+```
+
+**Important:** Basculez vers Star Citizen pendant le compte à rebours pour que les inputs soient envoyés au jeu.
+
+**Pour arrêter:** Appuyez sur `Ctrl+C`
+
+### Cas d'usage du replay
+
+- ✅ **Vérifier la qualité** des enregistrements
+- ✅ **Tester** que tous les inputs sont bien capturés
+- ✅ **Débugger** des problèmes dans les données
+- ✅ **Comparer** le comportement humain vs IA (plus tard)
+
 ## 📊 Données enregistrées
 
 Chaque session génère un dossier avec les fichiers suivants:
@@ -211,10 +248,13 @@ selfpiloting/
 ├── src/
 │   ├── screen_recorder.py      # Capture d'écran avec MSS
 │   ├── input_recorder.py       # Enregistrement clavier/souris
-│   └── data_recorder.py        # Coordination et sauvegarde
+│   ├── data_recorder.py        # Coordination et sauvegarde
+│   └── session_replay.py       # Replay des sessions enregistrées
 ├── utils/
-│   └── load_data.py            # Utilitaires de chargement
-├── record.py                   # Script principal
+│   └── load_data.py            # Utilitaires de chargement pour ML
+├── record.py                   # Script d'enregistrement
+├── replay.py                   # Script de replay
+├── test_recorder.py            # Test rapide
 ├── requirements.txt            # Dépendances
 └── README.md                   # Documentation
 ```
@@ -267,7 +307,7 @@ A: Oui! L'outil fonctionne avec n'importe quel jeu Windows.
 A: Réduisez la résolution (`--resolution 1280 720`) ou le FPS (`--fps 20`).
 
 **Q: Puis-je rejouer les enregistrements?**
-A: Les vidéos peuvent être lues avec n'importe quel lecteur MP4. Pour rejouer les inputs, vous devrez créer un script de playback séparé.
+A: Oui! Utilisez `python replay.py recordings/SESSION_NAME` pour rejouer les inputs clavier/souris. Les vidéos peuvent aussi être lues avec n'importe quel lecteur MP4.
 
 **Q: L'outil détecte-t-il les touches de manette?**
 A: Non, uniquement clavier/souris pour le moment. Support manette prévu dans le futur.
