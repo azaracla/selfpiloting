@@ -89,6 +89,12 @@ Examples:
         help='List all available recorded sessions'
     )
 
+    parser.add_argument(
+        '--no-native',
+        action='store_true',
+        help='Use pyautogui instead of Windows native input (not recommended for games)'
+    )
+
     return parser.parse_args()
 
 
@@ -152,7 +158,8 @@ def main():
     print()
 
     try:
-        replayer = SessionReplay(args.session_path)
+        use_native = not args.no_native
+        replayer = SessionReplay(args.session_path, use_windows_native=use_native)
 
         # Show session info
         info = replayer.get_info()
