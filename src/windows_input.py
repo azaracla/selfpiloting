@@ -164,29 +164,37 @@ class WindowsInput:
         if key_str.startswith("'") and key_str.endswith("'") and len(key_str) >= 3:
             key_str = key_str[1:-1]
 
-        key_lower = key_str.lower()
+        # Handle escaped characters like '\x03' (Ctrl+C)
+        # These are stored as literal strings, not actual control characters
+        if key_str.startswith('\\x') and len(key_str) == 4:
+            # Ignore control characters - they're typically interrupt signals
+            return 0
 
-        # Handle Key.xxx format from pynput
+        # Handle Key.xxx format from pynput (check BEFORE lowercasing!)
         if key_str.startswith('Key.'):
-            key_lower = key_str.split('.')[1].lower()
+            key_name = key_str.split('.')[1].lower()
             # Map pynput names to our VK codes
-            if key_lower == 'shift_l':
-                key_lower = 'shiftleft'
-            elif key_lower == 'shift_r':
-                key_lower = 'shiftright'
-            elif key_lower == 'ctrl_l':
-                key_lower = 'ctrlleft'
-            elif key_lower == 'ctrl_r':
-                key_lower = 'ctrlright'
-            elif key_lower == 'alt_l':
-                key_lower = 'altleft'
-            elif key_lower == 'alt_r':
-                key_lower = 'altright'
-            elif key_lower == 'page_up':
-                key_lower = 'pageup'
-            elif key_lower == 'page_down':
-                key_lower = 'pagedown'
+            if key_name == 'shift_l':
+                key_name = 'shiftleft'
+            elif key_name == 'shift_r':
+                key_name = 'shiftright'
+            elif key_name == 'ctrl_l':
+                key_name = 'ctrlleft'
+            elif key_name == 'ctrl_r':
+                key_name = 'ctrlright'
+            elif key_name == 'alt_l':
+                key_name = 'altleft'
+            elif key_name == 'alt_r':
+                key_name = 'altright'
+            elif key_name == 'page_up':
+                key_name = 'pageup'
+            elif key_name == 'page_down':
+                key_name = 'pagedown'
 
+            return VK_CODE.get(key_name, 0)
+
+        # For regular keys, just lowercase and look up
+        key_lower = key_str.lower()
         return VK_CODE.get(key_lower, 0)
 
     def key_down(self, key_str: str):
