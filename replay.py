@@ -90,9 +90,11 @@ Examples:
     )
 
     parser.add_argument(
-        '--no-native',
-        action='store_true',
-        help='Use pyautogui instead of Windows native input (not recommended for games)'
+        '--input-method', '-i',
+        type=str,
+        default='human',
+        choices=['native', 'human', 'vjoy', 'pyautogui'],
+        help='Input simulation method: "native", "human", "vjoy", or "pyautogui" (default: human)'
     )
 
     return parser.parse_args()
@@ -121,7 +123,8 @@ def main():
 
             # Load and show info
             try:
-                replayer = SessionReplay(str(session))
+                # Default to native for listing to avoid loading human input class here
+                replayer = SessionReplay(str(session), input_method='native')
                 info = replayer.get_info()
 
                 print(f"   Duration: {info['duration']:.1f}s")
@@ -158,14 +161,14 @@ def main():
     print()
 
     try:
-        use_native = not args.no_native
-        replayer = SessionReplay(args.session_path, use_windows_native=use_native)
+        replayer = SessionReplay(args.session_path, input_method=args.input_method)
 
         # Show session info
         info = replayer.get_info()
         print(f"Session: {session_path.name}")
         print(f"Duration: {info['duration']:.1f}s")
         print(f"Total events: {info['total_events']}")
+        print(f"Input method: {args.input_method}")
         print()
 
         # Show event breakdown
@@ -194,6 +197,7 @@ def main():
     print("=" * 60)
     print("Replay Complete!")
     print("=" * 60)
+
 
 
 if __name__ == '__main__':

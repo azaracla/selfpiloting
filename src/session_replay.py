@@ -18,26 +18,38 @@ except ImportError:
 # Import Windows native input for better game compatibility
 try:
     from src.windows_input import WindowsInput
+    from src.human_input import HumanizedWindowsInput
     WINDOWS_INPUT_AVAILABLE = True
 except ImportError:
     try:
         from windows_input import WindowsInput
+        from human_input import HumanizedWindowsInput
         WINDOWS_INPUT_AVAILABLE = True
     except ImportError:
         WINDOWS_INPUT_AVAILABLE = False
         WindowsInput = None
+        HumanizedWindowsInput = None
+
+try:
+    from src.vjoy_input import VJoyInput, VJOY_AVAILABLE
+except ImportError:
+    try:
+        from vjoy_input import VJoyInput, VJOY_AVAILABLE
+    except ImportError:
+        VJoyInput = None
+        VJOY_AVAILABLE = False
 
 
 class SessionReplay:
     """Replays recorded keyboard and mouse inputs."""
 
-    def __init__(self, session_path: str, use_windows_native: bool = True):
+    def __init__(self, session_path: str, input_method: str = 'native'):
         """
         Initialize session replay.
 
         Args:
             session_path: Path to recorded session directory
-            use_windows_native: Use Windows SendInput API instead of pyautogui (recommended for games)
+            input_method: Input method to use ('native', 'human', 'vjoy', 'pyautogui').
         """
         self.session_path = Path(session_path)
 
@@ -49,15 +61,28 @@ class SessionReplay:
 
         # Platform detection
         self.is_windows = platform.system() == 'Windows'
+        self.input_method = input_method
 
         # Choose input method
-        self.use_windows_native = use_windows_native and self.is_windows and WINDOWS_INPUT_AVAILABLE
+        self.input_handler = None
+        if self.is_windows:
+            if self.input_method == 'vjoy' and VJOY_AVAILABLE:
+                print("[SessionReplay] Using vJoy input")
+                try:
+                    self.input_handler = VJoyInput()
+                except (ImportError, RuntimeError) as e:
+                    print(f"[SessionReplay] Error initializing vJoy: {e}")
+                    self.input_handler = None # Fallback
+            elif self.input_method == 'human' and WINDOWS_INPUT_AVAILABLE:
+                print("[SessionReplay] Using humanized Windows native input")
+                self.input_handler = HumanizedWindowsInput()
+            elif self.input_method == 'native' and WINDOWS_INPUT_AVAILABLE:
+                print("[SessionReplay] Using Windows native input (SendInput API)")
+                self.input_handler = WindowsInput()
 
-        if self.use_windows_native:
-            print("[SessionReplay] Using Windows native input (SendInput API)")
-            self.windows_input = WindowsInput()
-        else:
-            print("[SessionReplay] Using pyautogui input")
+        if self.input_handler is None:
+            print("[SessionReplay] Using pyautogui input (fallback)")
+            self.input_method = 'pyautogui'
             # Controllers for pyautogui fallback
             self.keyboard_controller = keyboard.Controller()
             self.mouse_controller = mouse.Controller()
@@ -393,41 +418,41 @@ class SessionReplay:
         data = event['data']
 
         try:
-            if self.use_windows_native:
-                # Use Windows native SendInput API
+            if self.input_handler:
+                # Use a unified input handler (WindowsInput or HumanizedWindowsInput)
                 if event_type == 'key_press':
                     key_str = data['key_id']
                     self._pressed_keys[key_str] = True
-                    self.windows_input.key_down(key_str)
+                    self.input_handler.key_down(key_str)
 
                 elif event_type == 'key_release':
                     key_str = data['key_id']
                     if key_str in self._pressed_keys:
-                        self.windows_input.key_up(key_str)
+                        self.input_handler.key_up(key_str)
                         del self._pressed_keys[key_str]
 
                 elif event_type == 'mouse_move':
-                    # Use relative mouse movement for games (more natural)
+                    # Use relative mouse movement for games
                     x, y = data['x'], data['y']
                     if self._last_mouse_pos is not None:
                         dx = x - self._last_mouse_pos[0]
                         dy = y - self._last_mouse_pos[1]
-                        self.windows_input.mouse_move_relative(dx, dy)
+                        self.input_handler.mouse_move_relative(dx, dy)
                     self._last_mouse_pos = (x, y)
 
                 elif event_type == 'mouse_press':
                     button = data['button'].lower()
-                    self.windows_input.mouse_down(button)
+                    self.input_handler.mouse_down(button)
 
                 elif event_type == 'mouse_release':
                     button = data['button'].lower()
-                    self.windows_input.mouse_up(button)
+                    self.input_handler.mouse_up(button)
 
                 elif event_type == 'mouse_scroll':
                     if data['dy'] != 0:
-                        # Convert scroll delta to clicks (positive = up, negative = down)
+                        # Convert scroll delta to clicks
                         clicks = data['dy'] / 120.0  # Standard wheel delta
-                        self.windows_input.mouse_scroll(clicks)
+                        self.input_handler.mouse_scroll(clicks)
 
             else:
                 # Fallback to pyautogui
@@ -464,9 +489,13 @@ class SessionReplay:
 
     def _release_all_keys(self):
         """Release all currently pressed keys."""
-        if self.use_windows_native:
-            self.windows_input.release_all_keys()
+        if self.input_handler:
+            if self.input_method == 'vjoy':
+                self.input_handler.release_all()
+            else:
+                self.input_handler.release_all_keys()
         else:
+            # Pyautogui fallback
             for key_id, pyautogui_key in list(self._pressed_keys.items()):
                 try:
                     pyautogui.keyUp(pyautogui_key)

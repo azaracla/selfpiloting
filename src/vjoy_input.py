@@ -1,266 +1,194 @@
 """
 vJoy input driver for Star Citizen session replay.
-Converts keyboard/mouse inputs to virtual joystick inputs.
-
-This bypasses Easy Anti-Cheat because:
-- vJoy is a signed Windows driver
-- Star Citizen natively supports joysticks
-- EAC has no reason to block joystick input
-
-Installation:
-1. Download and install vJoy: https://sourceforge.net/projects/vjoystick/
-2. Install pyvjoy: pip install pyvjoy
+Manages two virtual joysticks for a HoSaS setup.
 """
 
 try:
     import pyvjoy
+    import time
     VJOY_AVAILABLE = True
 except ImportError:
     VJOY_AVAILABLE = False
-    print("[vJoyInput] Warning: pyvjoy not installed. Install with: pip install pyvjoy")
+    print("[vJoyManager] Warning: pyvjoy not installed. Install with: pip install pyvjoy")
 
 
 class VJoyInput:
     """
-    Interface to vJoy virtual joystick for input replay.
-
-    Maps keyboard/mouse to joystick axes and buttons:
-    - W/S keys -> Y axis (pitch)
-    - A/D keys -> X axis (yaw)
-    - Q/E keys -> RZ axis (roll)
-    - Mouse X -> RX axis (look horizontal)
-    - Mouse Y -> RY axis (look vertical)
-    - Space, Shift, etc. -> Buttons
+    Manages two vJoy devices for a HoSaS (Hand on Stick and Stick) setup.
+    - Stick 1 (Right): Handles flight/aim control (Pitch, Yaw, Roll, Mouse).
+    - Stick 2 (Left): Handles strafe control (Forward/Back, Left/Right).
     """
 
-    def __init__(self, device_id: int = 1):
-        """
-        Initialize vJoy device.
-
-        Args:
-            device_id: vJoy device ID (1-16, usually 1)
-        """
+    def __init__(self, device_id1: int = 1, device_id2: int = 2):
         if not VJOY_AVAILABLE:
             raise ImportError("pyvjoy not installed. Run: pip install pyvjoy")
 
-        self.device_id = device_id
-        try:
-            self.joystick = pyvjoy.VJoyDevice(device_id)
-            print(f"[vJoyInput] Connected to vJoy device {device_id}")
-        except Exception as e:
-            raise RuntimeError(f"Failed to connect to vJoy device {device_id}: {e}\n"
-                             "Make sure vJoy is installed and device {device_id} is enabled.")
+        self.stick1 = self._init_stick(device_id1)
+        self.stick2 = self._init_stick(device_id2)
 
-        # Axis ranges (vJoy uses 0-32767, center is 16384)
+        if not self.stick1:
+            raise RuntimeError(f"vJoy device {device_id1} is essential and could not be initialized.")
+
         self.axis_min = 0x0
-        self.axis_max = 0x8000  # 32768
-        self.axis_center = 0x4000  # 16384
+        self.axis_max = 0x8000
+        self.axis_center = 0x4000
 
-        # Current axis values
-        self.axes = {
-            'x': self.axis_center,   # Yaw (A/D keys)
-            'y': self.axis_center,   # Pitch (W/S keys)
-            'z': self.axis_center,   # Throttle
-            'rx': self.axis_center,  # Mouse X (look horizontal)
-            'ry': self.axis_center,  # Mouse Y (look vertical)
-            'rz': self.axis_center,  # Roll (Q/E keys)
-        }
+        self.axes1 = { 'x': self.axis_center, 'y': self.axis_center, 'z': self.axis_center, 'rx': self.axis_center, 'ry': self.axis_center, 'rz': self.axis_center }
+        self.axes2 = { 'x': self.axis_center, 'y': self.axis_center, 'z': self.axis_center, 'rx': self.axis_center, 'ry': self.axis_center, 'rz': self.axis_center }
 
-        # Button state (1-based indexing for vJoy)
-        self.buttons = {}
+        self.buttons1 = {}
+        self.buttons2 = {}
 
-        # Key to axis mapping for Star Citizen
+        # Key to axis mapping: key -> (axis_name, value, stick_id)
         self.key_to_axis = {
-            # Movement
-            'w': ('y', self.axis_max),     # Forward (pitch up)
-            's': ('y', self.axis_min),     # Backward (pitch down)
-            'a': ('x', self.axis_min),     # Strafe left (yaw left)
-            'd': ('x', self.axis_max),     # Strafe right (yaw right)
-            'q': ('rz', self.axis_min),    # Roll left
-            'e': ('rz', self.axis_max),    # Roll right
+            # Stick 2: Strafe Movement (AZERTY)
+            'z': ('y', self.axis_max, 2),     # Strafe Forward
+            's': ('y', self.axis_min, 2),     # Strafe Backward
+            'q': ('x', self.axis_min, 2),     # Strafe Left
+            'd': ('x', self.axis_max, 2),     # Strafe Right
 
-            # Throttle
-            'shift': ('z', self.axis_max),  # Boost
-            'ctrl': ('z', self.axis_min),   # Slow
+            # Stick 1: Flight Control (Roll)
+            'a': ('rz', self.axis_min, 1),    # Roll Left
+            'e': ('rz', self.axis_max, 1),    # Roll Right
+
+            # Throttle (can be on either stick, let's use Stick 1 for now)
+            'shift': ('z', self.axis_max, 1), # Boost
+            'ctrl': ('z', self.axis_min, 1),  # Slow
         }
 
-        # Key to button mapping
+        # Key to button mapping: key -> (button_id, stick_id)
         self.key_to_button = {
-            'space': 1,      # Primary weapon
-            'r': 2,          # Reload/Rearm
-            't': 3,          # Target
-            'f': 4,          # Flares
-            'g': 5,          # Landing gear
-            'n': 6,          # Flight mode
-            'v': 7,          # Camera
-            'tab': 8,        # Target cycle
-            'x': 9,          # Match target speed
-            'c': 10,         # Cruise control
-            'enter': 11,     # Confirm
-            'esc': 12,       # Menu
+            'space': (1, 1),
+            'r': (2, 1),
+            't': (3, 1),
+            'f': (4, 1),
+            'g': (5, 1),
+            'n': (6, 1),
+            'v': (7, 1),
+            'x': (9, 1),
+            'c': (10, 1),
+            'enter': (11, 1),
+            'esc': (12, 1),
+            'alt_l': (14, 1),
+            'tab': (15, 1),
+            'ctrl_l': (16, 1),
         }
-
-        # Mouse sensitivity for axis conversion
-        self.mouse_sensitivity = 100.0  # Pixels to axis range
-        self.last_mouse_pos = None
-
-        # Reset all axes to center
+        
+        self.mouse_sensitivity = 10.0
         self._reset_axes()
 
+    def _init_stick(self, device_id):
+        try:
+            stick = pyvjoy.VJoyDevice(device_id)
+            print(f"[vJoyManager] Connected to vJoy device {device_id}")
+            return stick
+        except Exception as e:
+            print(f"[vJoyManager] Warning: Failed to connect to vJoy device {device_id}: {e}")
+            return None
+
     def _reset_axes(self):
-        """Reset all axes to center position."""
-        self.joystick.data.wAxisX = self.axis_center
-        self.joystick.data.wAxisY = self.axis_center
-        self.joystick.data.wAxisZ = self.axis_center
-        self.joystick.data.wAxisXRot = self.axis_center
-        self.joystick.data.wAxisYRot = self.axis_center
-        self.joystick.data.wAxisZRot = self.axis_center
-        self.joystick.update()
+        for stick in [self.stick1, self.stick2]:
+            if stick:
+                stick.data.wAxisX = self.axis_center
+                stick.data.wAxisY = self.axis_center
+                stick.data.wAxisZ = self.axis_center
+                stick.data.wAxisXRot = self.axis_center
+                stick.data.wAxisYRot = self.axis_center
+                stick.data.wAxisZRot = self.axis_center
+                stick.update()
+
+    def _get_cleaned_key(self, key_str: str) -> str:
+        if key_str.startswith('\'') and key_str.endswith('\'') and len(key_str) >= 3:
+            key_str = key_str[1:-1]
+        if key_str.startswith('Key.'):
+            key_str = key_str.split('.')[1].lower()
+        return key_str.lower()
 
     def key_down(self, key_str: str):
-        """
-        Press a key down.
+        key = self._get_cleaned_key(key_str)
 
-        Args:
-            key_str: Key string (e.g., 'w', 'space', 'shift')
-        """
-        # Strip quotes if present
-        if key_str.startswith("'") and key_str.endswith("'") and len(key_str) >= 3:
-            key_str = key_str[1:-1]
-
-        # Handle Key.xxx format
-        if key_str.startswith('Key.'):
-            key_str = key_str.split('.')[1].lower()
-
-        key_lower = key_str.lower()
-
-        # Check if it's a button
-        if key_lower in self.key_to_button:
-            button_id = self.key_to_button[key_lower]
-            self.joystick.set_button(button_id, 1)
-            self.buttons[key_lower] = button_id
-            print(f"[vJoyInput] Button {button_id} pressed (key: {key_str})")
+        if key in self.key_to_button:
+            button_id, stick_id = self.key_to_button[key]
+            stick = self.stick1 if stick_id == 1 else self.stick2
+            buttons = self.buttons1 if stick_id == 1 else self.buttons2
+            if stick:
+                stick.set_button(button_id, 1)
+                buttons[key] = button_id
+                print(f"[vJoyManager] Stick {stick_id} Button {button_id} pressed (key: {key})")
             return
 
-        # Check if it's an axis
-        if key_lower in self.key_to_axis:
-            axis_name, axis_value = self.key_to_axis[key_lower]
-            self.axes[axis_name] = axis_value
-            self._update_axis(axis_name)
-            print(f"[vJoyInput] Axis {axis_name} = {axis_value} (key: {key_str})")
+        if key in self.key_to_axis:
+            axis_name, axis_value, stick_id = self.key_to_axis[key]
+            self._update_axis(stick_id, axis_name, axis_value)
+            print(f"[vJoyManager] Stick {stick_id} Axis {axis_name} = {axis_value} (key: {key})")
 
     def key_up(self, key_str: str):
-        """
-        Release a key.
+        key = self._get_cleaned_key(key_str)
 
-        Args:
-            key_str: Key string (e.g., 'w', 'space', 'shift')
-        """
-        # Strip quotes
-        if key_str.startswith("'") and key_str.endswith("'") and len(key_str) >= 3:
-            key_str = key_str[1:-1]
-
-        # Handle Key.xxx format
-        if key_str.startswith('Key.'):
-            key_str = key_str.split('.')[1].lower()
-
-        key_lower = key_str.lower()
-
-        # Release button
-        if key_lower in self.buttons:
-            button_id = self.buttons[key_lower]
-            self.joystick.set_button(button_id, 0)
-            del self.buttons[key_lower]
-            print(f"[vJoyInput] Button {button_id} released (key: {key_str})")
+        if key in self.buttons1 or key in self.buttons2:
+            stick_id = 1 if key in self.buttons1 else 2
+            stick = self.stick1 if stick_id == 1 else self.stick2
+            buttons = self.buttons1 if stick_id == 1 else self.buttons2
+            button_id = buttons.pop(key)
+            if stick:
+                stick.set_button(button_id, 0)
+                print(f"[vJoyManager] Stick {stick_id} Button {button_id} released (key: {key})")
             return
 
-        # Reset axis to center
-        if key_lower in self.key_to_axis:
-            axis_name, _ = self.key_to_axis[key_lower]
-            self.axes[axis_name] = self.axis_center
-            self._update_axis(axis_name)
-            print(f"[vJoyInput] Axis {axis_name} centered (key: {key_str})")
+        if key in self.key_to_axis:
+            axis_name, _, stick_id = self.key_to_axis[key]
+            self._update_axis(stick_id, axis_name, self.axis_center)
+            print(f"[vJoyManager] Stick {stick_id} Axis {axis_name} centered (key: {key})")
 
     def mouse_move_relative(self, dx: int, dy: int):
-        """
-        Move mouse relative (for camera control).
+        # Mouse movement always goes to Stick 1 (right stick for aiming)
+        rx_delta = int(dx * (self.axis_max / 2) / self.mouse_sensitivity)
+        ry_delta = -int(dy * (self.axis_max / 2) / self.mouse_sensitivity)
 
-        Args:
-            dx: Delta X (pixels)
-            dy: Delta Y (pixels)
-        """
-        # Convert pixel movement to axis movement
-        # Scale to axis range
-        rx_delta = int(dx * (self.axis_max - self.axis_min) / self.mouse_sensitivity)
-        ry_delta = int(dy * (self.axis_max - self.axis_min) / self.mouse_sensitivity)
-
-        # Update axes (with clamping)
-        self.axes['rx'] = max(self.axis_min, min(self.axis_max,
-                              self.axes['rx'] + rx_delta))
-        self.axes['ry'] = max(self.axis_min, min(self.axis_max,
-                              self.axes['ry'] + ry_delta))
-
-        self._update_axis('rx')
-        self._update_axis('ry')
+        if self.stick1:
+            self.stick1.data.wAxisXRot = self.axis_center + rx_delta
+            self.stick1.data.wAxisYRot = self.axis_center + ry_delta
+            self.stick1.update()
+            time.sleep(0.01)
+            self.stick1.data.wAxisXRot = self.axis_center
+            self.stick1.data.wAxisYRot = self.axis_center
+            self.stick1.update()
 
     def mouse_down(self, button: str = 'left'):
-        """
-        Press mouse button.
-
-        Args:
-            button: Button name ('left', 'right', 'middle')
-        """
-        button_map = {
-            'left': 1,    # Primary weapon
-            'right': 2,   # Secondary weapon
-            'middle': 3,  # Target lock
-        }
-
-        if button in button_map:
+        # Mouse buttons go to Stick 1
+        button_map = {'left': 1, 'right': 2, 'middle': 3}
+        if button in button_map and self.stick1:
             button_id = button_map[button]
-            self.joystick.set_button(button_id, 1)
-            self.buttons[f'mouse_{button}'] = button_id
+            self.stick1.set_button(button_id, 1)
+            self.buttons1[f'mouse_{button}'] = button_id
 
     def mouse_up(self, button: str = 'left'):
-        """
-        Release mouse button.
-
-        Args:
-            button: Button name ('left', 'right', 'middle')
-        """
         key = f'mouse_{button}'
-        if key in self.buttons:
-            button_id = self.buttons[key]
-            self.joystick.set_button(button_id, 0)
-            del self.buttons[key]
+        if key in self.buttons1 and self.stick1:
+            button_id = self.buttons1.pop(key)
+            self.stick1.set_button(button_id, 0)
 
-    def _update_axis(self, axis_name: str):
-        """Update a single axis on the vJoy device."""
-        value = self.axes[axis_name]
-
-        if axis_name == 'x':
-            self.joystick.data.wAxisX = value
-        elif axis_name == 'y':
-            self.joystick.data.wAxisY = value
-        elif axis_name == 'z':
-            self.joystick.data.wAxisZ = value
-        elif axis_name == 'rx':
-            self.joystick.data.wAxisXRot = value
-        elif axis_name == 'ry':
-            self.joystick.data.wAxisYRot = value
-        elif axis_name == 'rz':
-            self.joystick.data.wAxisZRot = value
-
-        self.joystick.update()
+    def _update_axis(self, stick_id, axis_name, value):
+        stick = self.stick1 if stick_id == 1 else self.stick2
+        axes = self.axes1 if stick_id == 1 else self.axes2
+        if not stick: return
+        
+        axes[axis_name] = value
+        
+        if axis_name == 'x': stick.data.wAxisX = value
+        elif axis_name == 'y': stick.data.wAxisY = value
+        elif axis_name == 'z': stick.data.wAxisZ = value
+        elif axis_name == 'rx': stick.data.wAxisXRot = value
+        elif axis_name == 'ry': stick.data.wAxisYRot = value
+        elif axis_name == 'rz': stick.data.wAxisZRot = value
+        
+        stick.update()
 
     def release_all(self):
-        """Release all buttons and center all axes."""
-        # Release all buttons
-        for button_id in list(self.buttons.values()):
-            self.joystick.set_button(button_id, 0)
-        self.buttons.clear()
-
-        # Center all axes
-        for axis_name in self.axes:
-            self.axes[axis_name] = self.axis_center
-            self._update_axis(axis_name)
+        for stick, buttons in [(self.stick1, self.buttons1), (self.stick2, self.buttons2)]:
+            if stick:
+                for button_id in list(buttons.values()):
+                    stick.set_button(button_id, 0)
+        self.buttons1.clear()
+        self.buttons2.clear()
+        self._reset_axes()
