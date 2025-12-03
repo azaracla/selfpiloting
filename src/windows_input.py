@@ -297,6 +297,29 @@ class WindowsInput:
         x = INPUT(type=INPUT_MOUSE, union=ii_)
         self.user32.SendInput(1, ctypes.pointer(x), ctypes.sizeof(x))
 
+    def mouse_move_relative(self, dx: int, dy: int):
+        """
+        Move mouse relative to current position.
+        This is better for games as it mimics actual mouse movement.
+
+        Args:
+            dx: Delta X (pixels to move horizontally, positive = right)
+            dy: Delta Y (pixels to move vertically, positive = down)
+        """
+        extra = ctypes.c_ulong(0)
+        ii_ = INPUT_UNION()
+        ii_.mi = MOUSEINPUT(
+            dx=int(dx),
+            dy=int(dy),
+            mouseData=0,
+            dwFlags=MOUSEEVENTF_MOVE,  # Relative movement (no ABSOLUTE flag)
+            time=0,
+            dwExtraInfo=ctypes.pointer(extra)
+        )
+
+        x = INPUT(type=INPUT_MOUSE, union=ii_)
+        self.user32.SendInput(1, ctypes.pointer(x), ctypes.sizeof(x))
+
     def mouse_down(self, button: str = 'left'):
         """
         Press mouse button down.

@@ -11,6 +11,7 @@ Pillow>=10.0.0
 pynput>=1.7.6
 pyautogui>=0.9.54
 pygetwindow>=0.0.9  # For window management
+pyvjoy>=1.0.1  # vJoy virtual joystick (optional, for anti-cheat bypass)
 
 # Video encoding
 imageio>=2.31.0
